@@ -157,16 +157,16 @@ var errorPod2 = &corev1.Pod{
 	},
 }
 
-// unscheduled error pod
+// unknown error pod
 var errorPod3 = &corev1.Pod{
 	ObjectMeta: metav1.ObjectMeta{
-		Name: "juicefs-test-node-error3",
+		Name: "juicefs-test-node-error4",
 		Annotations: map[string]string{
 			util.GetReferenceKey("/mnt/abc"): "/mnt/abc"},
 		Finalizers: []string{jfsConfig.Finalizer},
 	},
 	Status: corev1.PodStatus{
-		Phase: corev1.PodPending,
+		Phase: corev1.PodUnknown,
 		Conditions: []corev1.PodCondition{
 			{Type: corev1.PodReady, Status: corev1.ConditionFalse},
 			{Type: corev1.ContainersReady, Status: corev1.ConditionFalse},
@@ -177,16 +177,16 @@ var errorPod3 = &corev1.Pod{
 	},
 }
 
-// unknown error pod
-var errorPod4 = &corev1.Pod{
+// unscheduled pending pod
+var pendingPod = &corev1.Pod{
 	ObjectMeta: metav1.ObjectMeta{
-		Name: "juicefs-test-node-error4",
+		Name: "juicefs-test-node-error3",
 		Annotations: map[string]string{
 			util.GetReferenceKey("/mnt/abc"): "/mnt/abc"},
 		Finalizers: []string{jfsConfig.Finalizer},
 	},
 	Status: corev1.PodStatus{
-		Phase: corev1.PodUnknown,
+		Phase: corev1.PodPending,
 		Conditions: []corev1.PodCondition{
 			{Type: corev1.PodReady, Status: corev1.ConditionFalse},
 			{Type: corev1.ContainersReady, Status: corev1.ConditionFalse},
@@ -213,22 +213,6 @@ var runningPod = &corev1.Pod{
 		},
 		ContainerStatuses: []corev1.ContainerStatus{},
 	},
-}
-
-func setup() {
-	k8sclient.FakeClient.Flush()
-	jfsConfig.NodeName = "test-node"
-	jfsConfig.Namespace = "kube-system"
-	_, _ = k8sclient.FakeClient.CreatePod(readyPod)
-	_, _ = k8sclient.FakeClient.CreatePod(deletedPod)
-	_, _ = k8sclient.FakeClient.CreatePod(errorPod1)
-	_, _ = k8sclient.FakeClient.CreatePod(errorPod2)
-	_, _ = k8sclient.FakeClient.CreatePod(errorPod3)
-	_, _ = k8sclient.FakeClient.CreatePod(errorPod4)
-}
-
-func teardown() {
-	k8sclient.FakeClient.Flush()
 }
 
 func TestPodDriver_getPodStatus(t *testing.T) {
@@ -295,14 +279,14 @@ func TestPodDriver_getPodStatus(t *testing.T) {
 			want: podError,
 		},
 		{
-			name: "error4",
+			name: "pending",
 			fields: fields{
 				Client: k8sclient.FakeClient,
 			},
 			args: args{
-				pod: errorPod4,
+				pod: pendingPod,
 			},
-			want: podError,
+			want: podPending,
 		},
 		{
 			name: "delete",
@@ -321,7 +305,7 @@ func TestPodDriver_getPodStatus(t *testing.T) {
 			args: args{
 				pod: runningPod,
 			},
-			want: podRunning,
+			want: podPending,
 		},
 	}
 	for _, tt := range tests {
@@ -345,7 +329,7 @@ func TestPodDriver_podReadyHandler(t *testing.T) {
 					return nil, nil
 				})
 			defer patch1.Reset()
-			patch2 := ApplyMethod(reflect.TypeOf(d.Mounter), "Mount",
+			patch2 := ApplyMethod(reflect.TypeOf(d), "Mount",
 				func(_ *mount.Mounter, source string, target string, fstype string, options []string) error {
 					return nil
 				})
@@ -431,7 +415,7 @@ func TestPodDriver_podReadyHandler(t *testing.T) {
 			patch1 := ApplyFuncSeq(os.Stat, outputs)
 			defer patch1.Reset()
 			d := NewPodDriver(k8sclient.FakeClient)
-			patch2 := ApplyMethod(reflect.TypeOf(d.Mounter), "Mount",
+			patch2 := ApplyMethod(reflect.TypeOf(d), "Mount",
 				func(_ *mount.Mounter, source string, target string, fstype string, options []string) error {
 					return nil
 				})
@@ -446,7 +430,6 @@ func TestPodDriver_podDeletedHandler(t *testing.T) {
 	type fields struct {
 		Client   k8sclient.K8sClient
 		handlers map[podStatus]podHandler
-		Mounter  util.MountInter
 	}
 	type args struct {
 		ctx context.Context
@@ -472,7 +455,6 @@ func TestPodDriver_podDeletedHandler(t *testing.T) {
 			p := &PodDriver{
 				Client:   tt.fields.Client,
 				handlers: tt.fields.handlers,
-				Mounter:  tt.fields.Mounter,
 			}
 			got, err := p.podDeletedHandler(tt.args.ctx, tt.args.pod)
 			if (err != nil) != tt.wantErr {
@@ -490,7 +472,6 @@ func TestPodDriver_podErrorHandler(t *testing.T) {
 	type fields struct {
 		Client   k8sclient.K8sClient
 		handlers map[podStatus]podHandler
-		Mounter  util.MountInter
 	}
 	type args struct {
 		ctx context.Context
@@ -510,7 +491,6 @@ func TestPodDriver_podErrorHandler(t *testing.T) {
 			p := &PodDriver{
 				Client:   tt.fields.Client,
 				handlers: tt.fields.handlers,
-				Mounter:  tt.fields.Mounter,
 			}
 			got, err := p.podErrorHandler(tt.args.ctx, tt.args.pod)
 			if (err != nil) != tt.wantErr {
@@ -528,7 +508,6 @@ func TestPodDriver_podRunningHandler(t *testing.T) {
 	type fields struct {
 		Client   k8sclient.K8sClient
 		handlers map[podStatus]podHandler
-		Mounter  util.MountInter
 	}
 	type args struct {
 		ctx context.Context
@@ -548,9 +527,8 @@ func TestPodDriver_podRunningHandler(t *testing.T) {
 			p := &PodDriver{
 				Client:   tt.fields.Client,
 				handlers: tt.fields.handlers,
-				Mounter:  tt.fields.Mounter,
 			}
-			got, err := p.podRunningHandler(tt.args.ctx, tt.args.pod)
+			got, err := p.podPendingHandler(tt.args.ctx, tt.args.pod)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("podRunningHandler() error = %v, wantErr %v", err, tt.wantErr)
 				return
