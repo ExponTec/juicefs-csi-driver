@@ -34,7 +34,7 @@ type PodReconciler struct {
 }
 
 func (p PodReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	klog.V(6).Infof("Receive event. name: %s, namespace: %s", request.Name, request.Namespace)
+	klog.V(5).Infof("Receive event. name: %s, namespace: %s", request.Name, request.Namespace)
 
 	// fetch pod
 	requeue, pod, err := p.fetchPod(request.NamespacedName)

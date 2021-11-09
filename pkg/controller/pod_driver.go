@@ -270,7 +270,7 @@ func (p *PodDriver) podDeletedHandler(ctx context.Context, pod *corev1.Pod) (rec
 		}
 	}
 	// create
-	klog.V(5).Infof("pod targetPath not empty, need create thd pod:%s", pod.Name)
+	klog.V(5).Infof("pod targetPath not empty, need create pod:%s", pod.Name)
 	return reconcile.Result{}, nil
 }
 
